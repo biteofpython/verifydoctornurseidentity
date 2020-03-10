@@ -1,0 +1,233 @@
+# encoding:utf-8
+import requests,json,re,time,random,csv
+from hashlib import md5
+from bs4 import BeautifulSoup
+import pandas as pd
+from fake_useragent import UserAgent
+from doctor import fateadm_api
+
+ip_url = ""
+
+ip = []
+
+# 获取随机的浏览器请求头
+def get_user_agent(user_agent_type=None):
+    ua = UserAgent(verify_ssl=False)
+    if user_agent_type == "chrome":
+        return ua.chrome
+    elif user_agent_type == "firefox":
+        return ua.firefox
+    elif user_agent_type == "ie":
+        return ua.ie
+    elif user_agent_type == "opera":
+        return ua.opera
+    elif user_agent_type == "safari":
+        return ua.safari
+    data = [
+        ua.chrome,
+        ua.firefox,
+        ua.opera,
+        ua.ie,
+        ua.safari
+    ]
+    return random.choice(data)
+headersa = {
+    "Accept":'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3',
+    'User-Agent':get_user_agent(),
+    'referer':'http://zgcx.nhc.gov.cn:9090/Nurse',
+    'Host':'zgcx.nhc.gov.cn:9090',
+    'Origin':'http://zgcx.nhc.gov.cn:9090'
+}
+headerss = {
+    "Accept":'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3',
+    'User-Agent':get_user_agent(),
+    'referer':'http://zgcx.nhc.gov.cn:9090/Doctor',
+    'Host': 'zgcx.nhc.gov.cn:9090',
+    'Origin':'http://zgcx.nhc.gov.cn:9090'
+}
+headers = {}
+# 获取ip代理
+def get_ip(url,return_type=None):
+    proxies = []
+    while True:
+        try:
+            response = requests.get(url).text
+            if "提取太频繁,请按规定频率提取" in str(response):
+                time.sleep(8)
+                response = requests.get(url).text
+            for x in response.split("\n"):
+                if return_type!=None:
+                    proxie = "".join(x).replace("\r","")
+                else:
+                    proxie = {'https': 'https://{}'.format(x.replace("\r", "")),
+                              "http": 'http://{}'.format(x.replace("\r", ""))}
+                proxies.append(proxie)
+            if len(proxies) > 0:
+                proxies = [x for x in proxies if x!='' if str(x).strip()]
+                return proxies
+        except:
+            time.sleep(5)
+
+# 存入数据
+def save_data(path,content):
+    with open("{}.csv".format(path), "a+", newline="", errors="ignore", encoding="gbk") as a:
+        writer = csv.writer(a)
+        writer.writerow(tuple(content))
+
+# 调用打码返回验证码
+def get_Verification(file_name):
+    source = Verification_code("{}.png".format(file_name))
+    Verification = "".join(source["pic_str"]).strip()
+    if not Verification:
+        Verification = ""
+    return Verification
+
+data = []
+
+def judge_ip():
+    global index,ip
+    if index>20:
+        index = 0
+        ip = get_ip(
+            "http://api.xdaili.cn/xdaili-api//greatRecharge/getGreatIp?spiderId=da265371c2754b7b885d32b271c822ad&orderno=YZ20201149434P0ukQd&returnType=1&count=1")
+
+
+# 所有的城市
+content = [('11', '北京市'), ('12', '天津市'), ('13', '河北省'), ('14', '山西省'), ('15', '内蒙古自治区'), ('21', '辽宁省'), ('22', '吉林省'), ('23', '黑龙江省'), ('31', '上海市'), ('32', '江苏省'), ('33', '浙江省'), ('34', '安徽省'), ('35', '福建省'), ('36', '江西省'), ('37', '山东省'), ('41', '河南省'), ('42', '湖北省'), ('43', '湖南省'), ('44', '广东省'), ('45', '广西壮族自治区'), ('46', '海南省'), ('50', '重庆市'), ('51', '四川省'), ('52', '贵州省'), ('53', '云南省'), ('54', '西藏自治区'), ('61', '陕西省'), ('62', '甘肃省'), ('63', '青海省'), ('64', '宁夏回族自治区'), ('65', '新疆维吾尔自治区')]
+
+
+
+# 获取验证码图片和请求的参数
+def get__RequestVerificationToken(url):
+    # 生成一个浏览器的客户端
+    session = requests.session()
+    # 设置全局变量
+    global index,ip,headers
+    while True:
+        try:
+            # 设置浏览器的请求头
+            headers["User-Agent"] = get_user_agent()
+            # 请求连接获取__RequestVerificationToken参数和图片
+            response = session.get(url, headers=headers, proxies=ip[0],timeout=10).text
+            value = "".join(
+                re.findall(r'<input name="__RequestVerificationToken" type="hidden" value="(.*?)" />', response))
+            if value.strip():
+                print(value)
+                break
+        except:
+            index+=1
+            if index>2:
+                del ip[0]
+                if len(ip)==0:
+                    ip = get_ip(ip_url)
+    # 拼接图片链接
+    img = "http://zgcx.nhc.gov.cn:9090"+"".join(re.findall(r'generate-url="(.*?)"',response))
+    response = session.get(img,headers=headers)
+    # 保存图片
+    with open("123.png","wb")as f:
+        f.write(response.content)
+    return value,session
+
+
+def get_data(address,hospital,name,code,url,name_type,Occupation_type):
+    global ip,index,headers
+    # 判断网站是哪一个
+    if Occupation_type=="医生":
+        # 设置headers参数
+        headers = headerss
+        values,session = get__RequestVerificationToken("http://zgcx.nhc.gov.cn:9090/Doctor")
+    else:
+        headers = headersa
+        values,session = get__RequestVerificationToken("http://zgcx.nhc.gov.cn:9090/Nurse")
+    # 传给打码平台
+    b = fateadm_api.TestFunc("123.png")
+    # 获取验证码结果
+    a = str(b.pred_rsp.value)
+    # 构造data参数
+    data = {
+        "Prov": int(code),
+        name_type: name,
+        "Zy_Unit": hospital,
+        "Check_Code": "{}".format(a),
+        "__RequestVerificationToken": "{}".format(values)
+    }
+    while True:
+        try:
+            headers["User-Agent"] = get_user_agent()
+            # 发送请求
+            response = session.post(url, headers=headers, data=data, proxies=ip[0],timeout=10).text
+            # 获取是否查询得到
+            judge_text = "".join(re.findall(r'<h3 class="text-danger">(.*?)</h3>', response))
+            # 获取是否验证码错误
+            judge_check_code = "".join(re.findall(r'<h3 class="text-danger">(.*?)</h3>', response,re.DOTALL)).strip()
+            # 获取查询的错误结果
+            judge_number = "".join(re.findall(r'<div class="validation-summary-errors" data-valmsg-summary="true"><ul><li>(.*?)</li>',response))
+            if "未查询到符合条件的执业医生" in judge_text or "未查询到符合条件的执业护士" in judge_text:
+                return None
+            if "验证码输入错误"==judge_check_code:
+                fateadm_api.judge(b)
+                continue
+            if "每次查询请间隔60秒" in judge_number:
+                print("每次查询请间隔60秒")
+            if '很抱歉'in judge_number:
+                with open("关键词找不到.txt","a+",encoding="utf-8")as f:
+                    f.write(name+"\n")
+                return 1
+            if "所在医疗机构：" in judge_number:
+                with open("机构不存在.txt","a+",encoding="utf-8")as f:
+                    f.write(name+"\n")
+                return 1
+            soup = BeautifulSoup(response, 'lxml')
+            trs = soup.find("table", class_="table table-bordered").find_all("tr")[1]
+            tds = trs.find_all("td")
+            tds = [x.get_text() for x in tds]
+            if len(tds)>0:
+                break
+        except Exception as e:
+            index += 1
+            if index > 2:
+                del ip[0]
+                if len(ip) == 0:
+                    ip = get_ip(ip_url)
+            print(e)
+            if Occupation_type == "医生":
+                values,session = get__RequestVerificationToken("http://zgcx.nhc.gov.cn:9090/Doctor")
+            else:
+                values,session = get__RequestVerificationToken("http://zgcx.nhc.gov.cn:9090/Nurse")
+            b = fateadm_api.TestFunc("123.png")
+            a = str(b.pred_rsp.value)
+            data = {
+                "Prov": int(code),
+                name_type: name,
+                "Zy_Unit": hospital,
+                "Check_Code": "{}".format(a),
+                "__RequestVerificationToken": "{}".format(values)
+            }
+            time.sleep(3)
+    print(tds)
+    if "医生"==Occupation_type:
+        tds = tds[:-1]
+        tds.insert(0,"医生")
+    else:
+        tds.insert(0,"护士")
+    save_data("doctor",tds)
+    return 1
+
+
+
+if __name__ == '__main__':
+    da = pd.read_excel("123456789.xlsx",names=None)
+    da = da.values.tolist()
+    for d in da:
+        for c in content:
+            if d[0] in c[1]:
+                print("开始爬取名字为:{}".format(d[2]))
+                if len(ip)==0:
+                    ip = get_ip(ip_url)
+                a = get_data(d[0],d[1],d[2],c[0],"http://zgcx.nhc.gov.cn:9090/Doctor","Doctor_Name","医生")
+                del ip[0]
+                if a==None:
+                    if len(ip)==0:
+                        ip = get_ip(ip_url)
+                    a = get_data(d[0], d[1], d[2], c[0],"http://zgcx.nhc.gov.cn:9090/Nurse", "Nurse_Name", "护士")
+                    del  ip[0]
