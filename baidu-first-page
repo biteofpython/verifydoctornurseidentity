@@ -1,0 +1,56 @@
+# -*- coding:utf8 -*-
+# @Author : dusibo
+
+import requests,os,random,time
+from openpyxl import load_workbook
+from urllib import parse
+from lxml import etree
+
+headers = {
+    'User-Agent':'Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/74.0.3729.131 Safari/537.36',
+    'Host':'www.baidu.com',
+    'Accept':'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3',
+    'cookie':'BAIDUID=943BE215C65BB34F747B2D456133D0EA:FG=1; PSTM=1583538604; H_PS_PSSID=30963_1435_21113_30841_30996_30824_22157; BIDUPSID=2608607B14A766ED0845B2CF1DCFF8BD; BD_UPN=12314753; BDORZ=B490B5EBF6F3CD402E515D22BCDA1598; H_PS_645EC=b727nNg%2Fi6pvEsCkcod8kRl4bC7teffONGjtBhn2bHdit6eTE8uRntzEFJk'
+}
+
+path = "html集合"
+
+if not os.path.exists(path):
+    os.makedirs(path)
+
+def get_name():
+    wb = load_workbook("doctor.xlsx")
+    ws = wb.active
+    data = []
+    content = []
+    for i,b in zip(ws["C"],ws["B"]):
+        if i.value=='姓名列'or b=="医院名称":
+            continue
+        data.append(str(b.value).strip()+" "+str(i.value).strip())
+        content.append(str(i.value).strip())
+
+    for da,con in zip(data,content):
+        requests_name(parse.quote(da),con)
+        time.sleep(random.randint(6,10))
+
+
+def requests_name(name,title):
+    url = "https://www.baidu.com/s?wd={}".format(name)
+    print(title)
+    print(url)
+    response = requests.get(url, headers=headers)
+    response.encoding = "utf-8"
+    response = response.text
+
+    save_html(response,title)
+
+
+
+def save_html(content,name):
+    with open("{}/{}.html".format(path,name),"w",encoding="utf-8")as f:
+        f.write(content)
+        f.close()
+
+
+if __name__ == '__main__':
+    get_name()
